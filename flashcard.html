@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JP Flashcard Pro</title>
+
+    <style>
+        body {
+            margin: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            background: #0f0f0f;
+            color: white;
+        }
+
+        .app {
+            max-width: 430px;
+            margin: auto;
+            padding: 15px;
+        }
+
+        .header {
+            text-align: center;
+            font-size: 22px;
+            font-weight: 600;
+            margin: 10px 0 20px;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 10px;
+        }
+
+        .tab {
+            flex: 1;
+            text-align: center;
+            padding: 10px;
+            border-radius: 14px;
+            background: #1e1e1e;
+            cursor: pointer;
+        }
+
+        .tab.active {
+            background: #ff9500;
+        }
+
+        /* 3D CARD */
+        .card {
+            height: 200px;
+            margin: 25px 0;
+            perspective: 1000px;
+        }
+
+        .card-inner {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            transition: transform 0.6s;
+            transform-style: preserve-3d;
+        }
+
+        .card.flip .card-inner {
+            transform: rotateY(180deg);
+        }
+
+        .card-front,
+        .card-back {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            background: #1c1c1e;
+            border-radius: 25px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            backface-visibility: hidden;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            text-align: center;
+        }
+
+        .card-back {
+            transform: rotateY(180deg);
+        }
+
+        .small {
+            font-size: 16px;
+            opacity: 0.6;
+            margin-bottom: 8px;
+        }
+
+        .kanji {
+            font-size: 34px;
+            font-weight: 600;
+        }
+
+        /* BUTTONS */
+        .controls {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 10px;
+        }
+
+        button {
+            flex: 1;
+            padding: 10px;
+            border: none;
+            border-radius: 14px;
+            background: #2c2c2e;
+            color: white;
+            font-size: 14px;
+        }
+
+        /* PROGRESS BAR */
+        .progress-bar {
+            height: 10px;
+            background: #2c2c2e;
+            border-radius: 10px;
+            overflow: hidden;
+            margin-top: 15px;
+        }
+
+        .fill {
+            height: 100%;
+            width: 0%;
+            transition: 0.3s;
+        }
+
+        /* CIRCLE */
+        .circle {
+            width: 100px;
+            height: 100px;
+            border-radius: 50%;
+            margin: 20px auto;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            background: conic-gradient(#34c759 0deg, #2c2c2e 0deg);
+        }
+
+        .stats {
+            font-size: 13px;
+            opacity: 0.7;
+            text-align: center;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="app">
+        <div class="header">📱 JP Flashcard</div>
+
+        <div class="tabs">
+            <div class="tab active" onclick="switchTab('あ',this)">あ</div>
+            <div class="tab" onclick="switchTab('い',this)">い</div>
+        </div>
+
+        <div class="card" onclick="flipCard()">
+            <div class="card-inner">
+                <div class="card-front" id="cardFront"></div>
+                <div class="card-back" id="cardBack"></div>
+            </div>
+        </div>
+
+        <div class="controls">
+            <button onclick="prevCard()">⬅</button>
+            <button onclick="nextCard()">➡</button>
+        </div>
+
+        <div class="controls">
+            <button onclick="markLearned()">✅ Thuộc</button>
+            <button onclick="toggleReview()">Ôn lại</button>
+            <button onclick="toggleShuffle()">Shuffle</button>
+        </div>
+
+        <div class="progress-bar">
+            <div class="fill" id="fill"></div>
+        </div>
+
+        <div class="circle" id="circle">
+            <span id="percentText">0%</span>
+        </div>
+
+        <div class="stats" id="stats"></div>
+
+    </div>
+
+    <script>
+
+        let flashcards = {
+            "あ": [
+                { kanji: "相変わらず", hira: "あいかわらず", meaning: "vẫn" },
+                { kanji: "相次いで", hira: "あいついで", meaning: "liên tiếp" },
+                { kanji: "相手", hira: "あいて", meaning: "đối tượng" }
+            ],
+            "い": [
+                { kanji: "言い出す", hira: "いいだす", meaning: "bắt đầu nói" },
+                { kanji: "言い訳", hira: "いいわけ", meaning: "biện minh" },
+                { kanji: "意識", hira: "いしき", meaning: "ý thức" }
+            ]
+        };
+
+        let currentTab = "あ";
+        let currentIndex = 0;
+        let reviewMode = false;
+        let shuffleMode = false;
+        let learned = JSON.parse(localStorage.getItem("jpLearned")) || { "あ": [], "い": [] };
+
+        function getBaseList() { return flashcards[currentTab]; }
+
+        function getCurrentList() {
+            let list = getBaseList();
+            if (reviewMode) list = list.filter((_, i) => !learned[currentTab].includes(i));
+            if (shuffleMode) list = [...list].sort(() => Math.random() - 0.5);
+            return list;
+        }
+
+        function showCard() {
+            let list = getCurrentList();
+            if (list.length === 0) {
+                document.getElementById("cardFront").innerHTML = "🎉 Hoàn thành!";
+                document.getElementById("cardBack").innerHTML = "";
+                return;
+            }
+            let card = list[currentIndex];
+            document.getElementById("cardFront").innerHTML =
+                "<div class='small'>" + card.hira + "</div>" +
+                "<div class='kanji'>" + card.kanji + "</div>";
+            document.getElementById("cardBack").innerHTML =
+                "<div style='font-size:24px'>" + card.meaning + "</div>";
+            updateProgress();
+        }
+
+        function flipCard() {
+            document.querySelector(".card").classList.toggle("flip");
+        }
+
+        function nextCard() {
+            currentIndex = (currentIndex + 1) % getCurrentList().length;
+            document.querySelector(".card").classList.remove("flip");
+            showCard();
+        }
+
+        function prevCard() {
+            currentIndex--;
+            if (currentIndex < 0) currentIndex = getCurrentList().length - 1;
+            document.querySelector(".card").classList.remove("flip");
+            showCard();
+        }
+
+        function switchTab(tab, el) {
+            currentTab = tab;
+            currentIndex = 0;
+            reviewMode = false;
+            shuffleMode = false;
+            document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
+            el.classList.add("active");
+            document.querySelector(".card").classList.remove("flip");
+            showCard();
+        }
+
+        function markLearned() {
+            let baseList = getBaseList();
+            let current = getCurrentList()[currentIndex];
+            let realIndex = baseList.indexOf(current);
+            if (!learned[currentTab].includes(realIndex)) {
+                learned[currentTab].push(realIndex);
+                localStorage.setItem("jpLearned", JSON.stringify(learned));
+            }
+            showCard();
+        }
+
+        function toggleReview() {
+            reviewMode = !reviewMode;
+            currentIndex = 0;
+            document.querySelector(".card").classList.remove("flip");
+            showCard();
+        }
+
+        function toggleShuffle() {
+            shuffleMode = !shuffleMode;
+            currentIndex = 0;
+            document.querySelector(".card").classList.remove("flip");
+            showCard();
+        }
+
+        function updateProgress() {
+            let totalA = flashcards["あ"].length;
+            let totalI = flashcards["い"].length;
+            let doneA = learned["あ"].length;
+            let doneI = learned["い"].length;
+            let totalAll = totalA + totalI;
+            let doneAll = doneA + doneI;
+            let percent = Math.round((doneAll / totalAll) * 100);
+
+            let fill = document.getElementById("fill");
+            fill.style.width = percent + "%";
+            fill.style.background =
+                percent < 40 ? "#ff3b30" :
+                    percent < 80 ? "#ffcc00" : "#34c759";
+
+            let deg = percent * 3.6;
+            document.getElementById("circle").style.background =
+                `conic-gradient(#34c759 ${deg}deg,#2c2c2e ${deg}deg)`;
+
+            document.getElementById("percentText").innerText = percent + "%";
+            document.getElementById("stats").innerText =
+                `あ: ${doneA}/${totalA} | い: ${doneI}/${totalI} | Tổng: ${doneAll}/${totalAll}`;
+        }
+
+        showCard();
+
+    </script>
+</body>
+
+</html>
